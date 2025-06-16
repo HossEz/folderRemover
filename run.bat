@@ -1,37 +1,85 @@
 @echo off
-cd %~dp0
+setlocal enabledelayedexpansion
 
-:: Check if Python is installed
-echo Checking for Python installation...
+cd /d "%~dp0"
+title Archive Extractor - Setup and Runner
+
+echo ============================================
+echo    Archive Extractor - Setup and Runner   
+echo ============================================
+echo.
+
+:: Check Python installation
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Python is not installed. Please install Python first.
+if errorlevel 1 (
+    echo Error: Python not found in PATH
     pause
-    exit /b
+    exit /b 1
 )
+for /f "tokens=2" %%i in ('python --version 2^>^&1') do set "py_ver=%%i"
+echo Python !py_ver! found.
+echo.
 
-:: Check if requirements are already installed
-echo Checking for requirements...
-pip show colorama py7zr rarfile >nul 2>&1
-if %errorlevel% neq 0 (
-    :: Display installing message
-    echo Installing requirements...
-    pip install -r requirements.txt > install.log 2>&1
-
-    :: Check if the installation was successful
-    :CheckLoop
-    pip show colorama py7zr rarfile >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo Waiting for requirements to be installed...
-        timeout /t 1 >nul
-        goto CheckLoop
+:: Create venv if needed
+if not exist ".venv" (
+    echo Setting up environment for the first time...
+    python -m venv .venv
+    if errorlevel 1 (
+        echo Failed to create virtual environment.
+        pause
+        exit /b 1
     )
-    echo Requirements installed successfully.
-) else (
-    echo Requirements already installed.
+    set "first_run=1"
 )
 
-:: Run the Python script
-echo Running the script...
-python removefolder.py
-pause
+set "VENV_PY=.venv\Scripts\python.exe"
+
+:: Activate environment
+call .venv\Scripts\activate.bat
+
+:: Create requirements.txt if missing
+if not exist "requirements.txt" (
+    echo colorama > requirements.txt
+    echo py7zr >> requirements.txt
+    echo rarfile >> requirements.txt
+)
+
+:: Upgrade pip only on first run
+if defined first_run (
+    echo Preparing environment, please wait...
+    %VENV_PY% -m pip install --disable-pip-version-check --no-cache-dir --upgrade pip >nul 2>&1
+)
+
+:: Check if packages are installed
+%VENV_PY% -c "import colorama, py7zr, rarfile" >nul 2>&1
+if errorlevel 1 (
+    echo Installing required components...
+    %VENV_PY% -m pip install --disable-pip-version-check --no-cache-dir -r requirements.txt >nul 2>&1
+    :: Verify again
+    %VENV_PY% -c "import colorama, py7zr, rarfile" >nul 2>&1
+    if errorlevel 1 (
+        echo Failed to install required components. Please check your internet connection or try again later.
+        pause
+        exit /b 1
+    )
+    echo All components installed successfully.
+    timeout /t 2 >nul
+) else (
+    echo All components are ready.
+    timeout /t 2 >nul
+)
+
+echo.
+
+:: Run main script
+if exist "removefolder.py" (
+    echo Running archive extractor...
+    timeout /t 2 >nul
+    %VENV_PY% removefolder.py
+) else (
+    echo Error: removefolder.py not found in the current directory.
+)
+
+echo.
+echo Press any key to exit...
+pause >nul
